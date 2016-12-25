@@ -56,6 +56,8 @@ attr(post$post.date.time, "tzone") <- "Asia/Bangkok"
 sum(grepl("#[Oo][Ss]{2}&*[Tt][Ss]", post$message))
 
 # Summarized by #hash tag
+library(ggplot2)
+
 d <- post %>%
   mutate(post.date = as.Date(post.date.time, tz = "Asia/Bangkok")) %>%
   group_by(post.date) %>%
@@ -64,9 +66,26 @@ d <- post %>%
             osststag = sum(grepl("#[Oo][Ss]{2}&*[Tt][Ss]", message)),
             osswithcsr = sum(grepl("#[Kk][Tt][Cc]89000ความ+", message) & grepl("#[Oo][Ss]{2}&*[Tt][Ss]", message)))
 
-library(ggplot2)
-
 ggplot(data = d, aes(x = post.date, y = post)) + 
   geom_bar(stat = "identity") + 
   scale_x_date(date_labels = "%d-%b", date_minor_breaks = "1 day")
 
+# use tidyr to gather data from wide format to long format for plotting
+library(tidyr)
+d2 <- gather(d, "group", "n", 2:5)
+
+# mulitple bar plot side by side with command position = 'dodge"
+g2 <- ggplot(data = d2, aes(x = post.date, y = n)) + 
+  geom_bar(stat = "identity", aes(fill = group, color = group), position = "dodge") + 
+  scale_x_date(date_labels = "%d-%b", date_minor_breaks = "1 day")
+
+g2
+
+# apply plotly for interactive graph
+library(plotly)
+
+# combine ggplot2 + plotly use ggplotly
+ggplotly(g2)
+
+# use plotly command to plot bar graph (more meanningful than ggplot)
+plot_ly(data = d2, type = "bar", x = d2$post.date, y = d2$n, color = d2$group)
