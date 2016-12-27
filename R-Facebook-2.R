@@ -1,3 +1,4 @@
+# Data loading from Facebook ----
 setwd("/Users/Danny/Documents/R Project/R-Facebook/")
 library(Rfacebook)
 
@@ -39,27 +40,91 @@ p2 <- getGroup(195457950893312,token = myFB_Oauth,
 
 p3 <- getGroup(195457950893312,token = myFB_Oauth, 
                since = "2016/11/30T06:00:01", until = "2016/12/04T04:00:00", n = 50000)
-# Combine data and save 
+# Fixed part
+p4 <- getGroup(195457950893312,token = myFB_Oauth, 
+               since = "2016/11/06T00:00:01", until = "2016/11/09T23:59:59", n = 50000)
+
+p5 <- getGroup(195457950893312,token = myFB_Oauth, 
+               since = "2016/11/10T00:00:01", until = "2016/11/10T23:59:59", n = 50000)
+
+p6 <- getGroup(195457950893312,token = myFB_Oauth, 
+               since = "2016/11/12T00:00:01", until = "2016/11/15T23:59:59", n = 50000)
+
+p7 <- getGroup(195457950893312,token = myFB_Oauth, 
+               since = "2016/11/13T00:00:01", until = "2016/11/14T23:59:59", n = 50000)
+
+p8 <- getGroup(195457950893312,token = myFB_Oauth, 
+               since = "2016/11/12T00:00:01", until = "2016/11/12T23:59:59", n = 50000)
+
+p9 <- getGroup(195457950893312,token = myFB_Oauth, 
+               since = "2016/11/15T00:00:01", until = "2016/11/15T23:59:59", n = 50000)
+
+p10 <- getGroup(195457950893312,token = myFB_Oauth, 
+               since = "2016/11/20T00:00:01", until = "2016/11/20T23:59:59", n = 50000)
+
+post.fix <- bind_rows(p4, p5, p6)
+save(post.fix, file = "FBPostFix.RData")
+load(file = "FBPostFix.RData")
+
+post.fix <- post.fix[!(as.Date(post.fix$post.date.time) %in%
+                        c(as.Date("2016-11-12"), as.Date("2016-11-15"), as.Date("2016-11-20"))),  ]
+
+post.fix <- bind_rows(post.fix, p8, p9, p10)
+save(post.fix, file = "FBPostFix.RData")
+load(file = "FBPostFix.RData")
+
+# Convert charactor to POSIXct
+post.fix$post.date.time <- as.POSIXct(post.fix$created_time, 
+                                      format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
+
+# Convert time zone from UTC to Asia/Bangkok, also convert to charactor again
+post.fix$post.date.time <- format(post.fix$post.date.time, tz = "Asia/Bangkok")
+
+# Convert charactor back to POSIXct and define timezone
+# R show UTC+7.00 as ICT = Indo China Time
+post.fix$post.date.time <- as.POSIXct(post.fix$post.date.time, tz = "Asia/Bangkok")
+
+# Combine data and save ----
 
 library(dplyr)
 post <- bind_rows(p1, p2, p3)
 save(post, file = "FBPost28Oct_4Dec.RData")
 load(file = "FBPost28Oct_4Dec.RData")
 
-# Create R date-time data
-post$post.date.time <- as.POSIXct(substr(post$created_time, 1, 19), 
-                                  format = "%Y-%m-%dT%H:%M:%S", tz = "GMT")
-# change time zone from GMT to Asia/Bangkok
-attr(post$post.date.time, "tzone") <- "Asia/Bangkok"
+# Convert charactor to POSIXct 
+post$post.date.time <- as.POSIXct(post$created_time,
+                                  format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
+# Convert time zone from UTC to Aisa/Bangkok, also convert to charactor again
+post$post.date.time <- format(post$post.date.time, tz = "Asia/Bangkok")
+
+# Convert charactor back to POSIXct again
+post$post.date.time <- as.POSIXct(post$post.date.time, tz = "Asia/Bangkok")
+
+# recheck time zone from attribue
+attr(post$post.date.time, "tzone")
+
+# Remove error time period 
+library(dplyr)
+d <- post.fix %>%
+  group_by(as.Date(post.date.time)) %>%
+  summarise(n=n())
+
+post.trim <- post[!(as.Date(post$post.date.time) %in% 
+                      c(seq.Date(as.Date("2016-11-06"), as.Date("2016-11-10"), by = 'day'), 
+                        as.Date("2016-11-12"), as.Date("2016-11-15"))),  ]
+
+post.new <- bind_rows(post.trim, post.fix)
+save(post.new, file = "FBPostEdit.RData")
+load(file = "FBPostEdit.RData")
 
 # Count hashtag #oss&ts
-sum(grepl("#[Oo][Ss]{2}&*[Tt][Ss]", post$message))
+sum(grepl("#[Oo][Ss]{2}&*[Tt][Ss]", post.new$message))
 
 # Summarized by #hash tag
 library(ggplot2)
 
-d <- post %>%
-  mutate(post.date = as.Date(post.date.time, tz = "Asia/Bangkok")) %>%
+d <- post.new %>%
+  mutate(post.date = as.Date(post.date.time)) %>%
   group_by(post.date) %>%
   summarise(post = n(), 
             csrtag = sum(grepl("#[Kk][Tt][Cc]89000ความ+", message)),
@@ -70,7 +135,9 @@ ggplot(data = d, aes(x = post.date, y = post)) +
   geom_bar(stat = "identity") + 
   scale_x_date(date_labels = "%d-%b", date_minor_breaks = "1 day")
 
+# Explanatory data analysis ----
 # use tidyr to gather data from wide format to long format for plotting
+
 library(tidyr)
 d2 <- gather(d, "group", "n", 2:5)
 
@@ -89,3 +156,31 @@ ggplotly(g2)
 
 # use plotly command to plot bar graph (more meanningful than ggplot)
 plot_ly(data = d2, type = "bar", x = d2$post.date, y = d2$n, color = d2$group)
+
+
+# Data Analysis ----
+
+load(file = "FBPostEdit.RData")
+# keep bacward compatability with old code
+post <- post.new
+rm(post.new)
+
+# Data cleaning
+# Find highest poster
+count.id.post <- aggregate(post["id"], by = post["from_id"], FUN = length)
+count.id.post <- count.id.post[order(count.id.post$id, decreasing = TRUE), ]
+View(count.id.post)
+summary(count.id.post)
+
+library(plotly)
+plot_ly(count.id.post, x = count.id.post$id, type = "histogram")
+
+# trim outliner - 5% top & last ----
+# n.trim <- round(0.05 * nrow(count.id.post))
+# rownames(count.id.post) <- NULL  # Reset rownames index
+# form_id.trim exclude 1:n.trim of head and tails
+# from_id.trim <- count.id.post[n.trim:(nrow(count.id.post)-n.trim),"from_id"]
+# Check histogram plot of trimmed data
+# with(count.id.post[(count.id.post$from_id %in% from_id.trim), ], hist(id))
+# filter post trim from post where from_id in from_id.trim
+# post.trim <- post[(post$from_id %in% from_id.trim), ]
