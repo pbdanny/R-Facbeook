@@ -173,7 +173,10 @@ View(count.id.post)
 summary(count.id.post)
 
 library(plotly)
-plot_ly(count.id.post, x = count.id.post$id, type = "histogram")
+
+plot_ly(count.id.post, x = ~count.id.post$id, type = "histogram",
+        autobinx = FALSE, xbins = list(start = 0, end = 5 , size = 1))
+# Plotly complex parameter use list data type
 
 # trim outliner - 5% top & last ----
 # n.trim <- round(0.05 * nrow(count.id.post))
@@ -184,3 +187,45 @@ plot_ly(count.id.post, x = count.id.post$id, type = "histogram")
 # with(count.id.post[(count.id.post$from_id %in% from_id.trim), ], hist(id))
 # filter post trim from post where from_id in from_id.trim
 # post.trim <- post[(post$from_id %in% from_id.trim), ]
+
+# Analysis # Like in first post effect on # post ----
+
+load(file = "FBPostEdit.RData")
+
+# Transform data to list
+post.list <- split(post[, c("from_id", "type", "likes_count",
+                            "comments_count", "shares_count", 
+                            "post.date.time")], post$from_id)
+# sort data.frame in list by post.date.time
+post.list <- lapply(post.list, 
+                    FUN = function(df) {
+                      df[order(df$post.date.time), ]
+                      })
+
+# No. of liked in first post
+firstPost.liked <- lapply(post.list,
+                          FUN = function(df) {
+                            df[1,"likes_count"]
+                            })
+
+firstPost.commnet <- lapply(post.list,
+                          FUN = function(df) {
+                            df[1,"comments_count"]
+                          })
+
+# No. of post after first post
+noPost.afterFirst <- lapply(post.list, 
+                            FUN = function(df) {nrow(df[-1, ])
+                            })
+df <- cbind(as.data.frame(unlist(firstPost.liked)),
+            as.data.frame(unlist(firstPost.commnet)),
+            as.data.frame(unlist(noPost.afterFirst)))
+colnames(df) <- c("firstPostLiked", "firstPostCommnet", "noPostAfterfirst")
+
+summary(df)
+plot(x = df$firstPostLiked, y = df$noPostAfterfirst
+     , ylim = c(0, 1000), xlim = c(0, 80))
+# from EDA show no relation between no.first post liked <-> no post after first
+
+plot(x = df$firstPostCommnet, y = df$noPostAfterfirst)
+# from basic EDA shwo no relation comment <-> no post after first post
