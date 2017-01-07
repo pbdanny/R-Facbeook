@@ -193,9 +193,9 @@ plot_ly(count.id.post, x = ~count.id.post$id, type = "histogram",
 load(file = "FBPostEdit.RData")
 
 # Transform data to list
-post.list <- split(post[, c("from_id", "type", "likes_count",
+post.list <- split(post.new[, c("from_id", "type", "likes_count",
                             "comments_count", "shares_count", 
-                            "post.date.time")], post$from_id)
+                            "post.date.time")], post.new$from_id)
 # sort data.frame in list by post.date.time
 post.list <- lapply(post.list, 
                     FUN = function(df) {
@@ -208,7 +208,7 @@ firstPost.liked <- lapply(post.list,
                             df[1,"likes_count"]
                             })
 
-firstPost.commnet <- lapply(post.list,
+firstPost.comment <- lapply(post.list,
                           FUN = function(df) {
                             df[1,"comments_count"]
                           })
@@ -218,7 +218,7 @@ noPost.afterFirst <- lapply(post.list,
                             FUN = function(df) {nrow(df[-1, ])
                             })
 df <- cbind(as.data.frame(unlist(firstPost.liked)),
-            as.data.frame(unlist(firstPost.commnet)),
+            as.data.frame(unlist(firstPost.comment)),
             as.data.frame(unlist(noPost.afterFirst)))
 colnames(df) <- c("firstPostLiked", "firstPostCommnet", "noPostAfterfirst")
 
@@ -227,5 +227,89 @@ plot(x = df$firstPostLiked, y = df$noPostAfterfirst
      , ylim = c(0, 1000), xlim = c(0, 80))
 # from EDA show no relation between no.first post liked <-> no post after first
 
-plot(x = df$firstPostCommnet, y = df$noPostAfterfirst)
+plot(x = df$firstPostComment, y = df$noPostAfterfirst, 
+     ylim = c(0,1000), xlim = c(0,10))
 # from basic EDA shwo no relation comment <-> no post after first post
+
+# Try clustering data ----
+clust <- post.new[, c("from_id", "likes_count", "comments_count", "post.date.time")]
+
+# Convert POSIXlt to 24hr
+clust$hr <- as.integer(format(clust$post.date.time, "%H"))
+clust$post.date.time <- NULL
+
+# Filter outliner like > 100 out
+clust <- clust[clust$likes_count <= 100, ]
+
+# Scale varible (normal curve scales)
+clust$likes_count.scales <- scale(clust$likes_count)
+clust$hr.scales <- scale(clust$hr)
+
+# Check scaled data mean ~ 0, sd ~ 1
+colMeans(clust$likes_count.scales)
+sd(clust$likes_count.scales)
+colMeans(clust$hr.scales)
+sd(clust$hr.scales)
+
+# Run kmeans clustering on scales data with center (k) = 5
+kclust <- kmeans(clust[,c(5,6)], centers = 5)
+
+# Plot data points by clusetered and 
+plot(x = clust$likes_count, y = clust$hr, col = kclust$cluster)
+points(kclust$centers, pch = 2)
+
+# Features engineering ----
+
+load(file = "FBPostEdit.RData")
+
+library(dplyr)
+library(plotly)
+library(tidyr)
+
+d <- post.new %>%
+  mutate(post.date = as.Date(post.date.time)) %>%
+  group_by(post.date) %>%
+  summarise(n = n())
+
+plot_ly(d, type = 'bar', x = d$post.date, y = d$n)
+
+s <- post.new %>%
+  select(from_id, message, likes_count) %>%
+  mutate(post.len = nchar(message)) %>%
+  group_by(from_id) %>%
+  summarise(n = n(), mean.post.len = mean(post.len), mean.like.count = mean(likes_count))
+
+# Create period of time bin
+# 0-6am = 1, 7-12 = 2, 13-18 = 3, 19-24 = 4
+t.bin <- post.new %>%
+  select(from_id, post.date.time) %>%
+  mutate(post.time = as.integer(format(post.date.time, "%H"))) %>%
+  mutate(time.bin = findInterval(post.time, seq(0, 24, 6))) %>%
+  group_by(from_id, time.bin) %>%
+  summarise(n = n())
+         
+t.bin.df <- t.bin %>%
+  mutate(time.bin = paste("t", time.bin, sep = "_")) %>%
+  spread(time.bin, n)
+
+# Create no of post from start - end project
+d.seq <- post.new %>%
+  select(from_id, post.date.time) %>%
+  mutate(post.date = as.Date(post.date.time)) %>%
+  mutate(post.date.seq = sprintf("%02d", difftime(post.date, as.Date("2016-10-27") , units = "days"))) %>%
+  group_by(from_id, post.date.seq) %>%
+  summarise(n = n())
+
+d.seq.df <- d.seq %>%
+  mutate(post.date.seq = paste("d", post.date.seq, sep = "_")) %>%
+  spread(post.date.seq, n)
+
+# Combine all 3 table use from_id as key
+
+df <- s %>%
+  left_join(t.bin.df, by = "from_id") %>%
+  left_join(d.seq.df, by = "from_id")
+
+# Remove temp table
+rm(list = c("d.seq", "d.seq.df", "t.bin", "t.bin.df"))
+
