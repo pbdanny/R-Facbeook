@@ -272,9 +272,11 @@ d <- post.new %>%
   summarise(n = n())
 
 plot_ly(d, type = 'bar', x = d$post.date, y = d$n)
+rm("d")
 
 s <- post.new %>%
   select(from_id, message, likes_count) %>%
+  filter(!is.na(message)) %>%
   mutate(post.len = nchar(message)) %>%
   group_by(from_id) %>%
   summarise(n = n(), mean.post.len = mean(post.len), mean.like.count = mean(likes_count))
@@ -290,7 +292,7 @@ t.bin <- post.new %>%
          
 t.bin.df <- t.bin %>%
   mutate(time.bin = paste("t", time.bin, sep = "_")) %>%
-  spread(time.bin, n)
+  spread(time.bin, n, fill = 0)
 
 # Create no of post from start - end project
 d.seq <- post.new %>%
@@ -302,7 +304,7 @@ d.seq <- post.new %>%
 
 d.seq.df <- d.seq %>%
   mutate(post.date.seq = paste("d", post.date.seq, sep = "_")) %>%
-  spread(post.date.seq, n)
+  spread(post.date.seq, n, fill = 0)
 
 # Combine all 3 table use from_id as key
 
@@ -311,5 +313,29 @@ df <- s %>%
   left_join(d.seq.df, by = "from_id")
 
 # Remove temp table
-rm(list = c("d.seq", "d.seq.df", "t.bin", "t.bin.df"))
+rm(list = c("s", "d.seq", "d.seq.df", "t.bin", "t.bin.df"))
+save(df, file = "FBCluster.RData")
+load(file = "FBCluster.RData")
 
+# K-means clustering
+# Scales data
+df.scale <- data.frame(scale(df[c(-1875, -772),-1]))
+
+# Determine number of clusters
+# use within sum square & elbow critria 
+wss <- 0
+for (i in 1:15) wss[i] <- sum(kmeans(df.scale, centers = i)$withinss)
+plot(1:15, wss, type = "b", xlab = "Number of Clusters",
+     ylab = "Within groups sum of squares")
+
+# Result show 8 clusters yield best clustering
+k.means.fit <- kmeans(df.scale, centers = 8)
+library(cluster)
+clusplot(df.scale, k.means.fit$cluster, 
+         color = TRUE, shade = TRUE, labels = 2)
+# with clusplot labels = 1, use point & click to identify the outliner
+# row 1875, 772 then remove from data and re clustering
+# any way the partition of kmeans still overlapping, segmentation not yield
+# heterogeneity between each cluster
+
+# Hierchical 
