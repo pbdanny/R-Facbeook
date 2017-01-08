@@ -338,4 +338,49 @@ clusplot(df.scale, k.means.fit$cluster,
 # any way the partition of kmeans still overlapping, segmentation not yield
 # heterogeneity between each cluster
 
-# Hierchical 
+# Hierchical clustering
+dist <- dist(df.scale, method = "euclidean")
+clust <- hclust(dist, method = "ward.D")
+plot(clust)
+
+# Use cluster = 3 group
+group <- cutree(clust, k = 3)
+
+# Plot dentogram with cutree
+rect.hclust(clust, k = 3 , border = 'red')
+
+# Map back group to data
+df.hclust <- df[c(-1875, -772),]
+df.hclust$clust <- group
+
+library(ggplot2)
+
+ggplot(df.hclust, aes(n, fill = factor(clust), color = factor(clust))) +
+  geom_density(alpha = 0.2)
+
+ggplot(df.hclust, aes(mean.post.len, fill = factor(clust), color = factor(clust))) +
+  geom_density(alpha = 0.2)
+
+ggplot(df.hclust, aes(x = n, y = mean.post.len, fill = factor(clust), color = factor(clust))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(stat = "smooth")
+
+ggplot(df.hclust, aes(x = n, y = mean.like.count, fill = factor(clust), color = factor(clust))) +
+  geom_point(alpha = 0.2) +
+  geom_smooth(stat = "smooth")
+
+# group 1 : "Effective poster" moderate poster, tailer content to gain likes
+# group 2 : "Just poster" Rarely post, don't care like received
+# group 3 : "Power poster" Super post, don't care like received
+
+# Try combination of distance & clustering
+# d <- c("euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski")
+# c <- c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid")
+# 
+# for (i in 1:length(d)){
+#   for (j in 1:length(c)){
+#     plot(hclust(dist(df.scale, method = d[i]), method = c[j]),
+#          main = sprintf("Dist. = %s : Clust = %s", d[i], c[j]))
+#   }
+# }
+
