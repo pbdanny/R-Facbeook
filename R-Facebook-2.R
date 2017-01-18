@@ -317,19 +317,25 @@ rm(list = c("s", "d.seq", "d.seq.df", "t.bin", "t.bin.df"))
 save(df, file = "FBCluster.RData")
 load(file = "FBCluster.RData")
 
-# K-means clustering
-# Scales data
+# K-means clustering ----
+load(file = "FBCluster.RData")
+
+# Scale data
 df.scale <- data.frame(scale(df[c(-1875, -772),-1]))
 
 # Determine number of clusters
-# use within sum square & elbow critria 
+# use total within-cluster sum square
+# Select by elbow graph
+# add nstart > 1 for 10 times random start points for clustering
 wss <- 0
-for (i in 1:15) wss[i] <- sum(kmeans(df.scale, centers = i)$withinss)
+for (i in 1:15) wss[i] <- kmeans(df.scale, centers = i, nstart = 10)$tot.withinss
 plot(1:15, wss, type = "b", xlab = "Number of Clusters",
-     ylab = "Within groups sum of squares")
+     ylab = "Within-cluster sum of squares")
 
 # Result show 8 clusters yield best clustering
-k.means.fit <- kmeans(df.scale, centers = 8)
+k.means.fit <- kmeans(df.scale, centers = 8, nstart = 10)
+
+# Plot clustering results
 library(cluster)
 clusplot(df.scale, k.means.fit$cluster, 
          color = TRUE, shade = TRUE, labels = 2)
@@ -337,6 +343,30 @@ clusplot(df.scale, k.means.fit$cluster,
 # row 1875, 772 then remove from data and re clustering
 # any way the partition of kmeans still overlapping, segmentation not yield
 # heterogeneity between each cluster
+
+# Recheck clusterting result with PCA
+df.pca <- prcomp(df.scale)
+plot(x = df.pca$x[ ,1], y = df.pca$x[, 2])
+
+# PAM (Patition Around Medoids) clustering ----
+# find optimum k of cluster find maximum width in silluate data
+sil <- 0
+for(i in 2:15) sil[i] <- pam(scale(df[, -1]), i)$silinfo$avg.width
+
+k <- which.max(sil)  # Find cluster that maximized avg width between cluster
+df.pam <- pam(scale(df[, -1]), 4)
+
+df.pam$medoids  # Show point selected as medoids
+df.pam$clustering  # Cluster assigned
+table(df.pam$clustering)  # No. of obs in each cluster
+
+library(cluster)
+clusplot(df.pam)
+# silhouette plot show obs. in each cluster & ave Sihouette witdh
+# - silhouette width = miss cluster
+plot(silhouette(df.pam))
+
+# From plot result the clustering not so clear
 
 # Hierchical clustering
 dist <- dist(df.scale, method = "euclidean")
@@ -356,18 +386,23 @@ df.hclust$clust <- group
 library(ggplot2)
 
 ggplot(df.hclust, aes(n, fill = factor(clust), color = factor(clust))) +
-  geom_density(alpha = 0.2)
+  geom_density(alpha = 0.2) +
+  coord_cartesian(xlim = c(0, 100))
 
 ggplot(df.hclust, aes(mean.post.len, fill = factor(clust), color = factor(clust))) +
-  geom_density(alpha = 0.2)
+  geom_density(alpha = 0.2) +
+  coord_cartesian(xlim = c(0, 500))
 
 ggplot(df.hclust, aes(x = n, y = mean.post.len, fill = factor(clust), color = factor(clust))) +
   geom_point(alpha = 0.2) +
-  geom_smooth(stat = "smooth")
+  geom_smooth(stat = "smooth") +
+  coord_cartesian(xlim = c(0, 500), ylim = c(0, 1000))
 
 ggplot(df.hclust, aes(x = n, y = mean.like.count, fill = factor(clust), color = factor(clust))) +
   geom_point(alpha = 0.2) +
-  geom_smooth(stat = "smooth")
+  geom_smooth(stat = "smooth") +
+  coord_cartesian(xlim = c(0, 500))
+  
 
 # group 1 : "Effective poster" moderate poster, tailer content to gain likes
 # group 2 : "Just poster" Rarely post, don't care like received
