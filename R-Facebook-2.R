@@ -317,9 +317,10 @@ rm(list = c("s", "d.seq", "d.seq.df", "t.bin", "t.bin.df"))
 save(df, file = "FBCluster.RData")
 load(file = "FBCluster.RData")
 
-# K-means clustering ----
+# Partitioning Clustering ----
 load(file = "FBCluster.RData")
 
+# K - Means ----
 # Scale data
 df.scale <- data.frame(scale(df[c(-1875, -772),-1]))
 
@@ -354,6 +355,7 @@ sil <- 0
 for(i in 2:15) sil[i] <- pam(scale(df[, -1]), i)$silinfo$avg.width
 
 k <- which.max(sil)  # Find cluster that maximized avg width between cluster
+
 df.pam <- pam(scale(df[, -1]), 4)
 
 df.pam$medoids  # Show point selected as medoids
@@ -362,13 +364,16 @@ table(df.pam$clustering)  # No. of obs in each cluster
 
 library(cluster)
 clusplot(df.pam)
-# silhouette plot show obs. in each cluster & ave Sihouette witdh
+# silhouette plot show obs. in each cluster & avg Sihouette witdh
 # - silhouette width = miss cluster
-plot(silhouette(df.pam))
+# use parameter border = NA to solve color not show
 
+plot(silhouette(df.pam), col = 2:5, border = NA)
 # From plot result the clustering not so clear
+# The silhouette width of each cluster have minus value (close to adjacent cluster)
 
-# Hierchical clustering
+# Hierchical clustering ----
+
 dist <- dist(df.scale, method = "euclidean")
 clust <- hclust(dist, method = "ward.D")
 plot(clust)
