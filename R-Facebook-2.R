@@ -188,7 +188,7 @@ plot_ly(count.id.post, x = ~count.id.post$id, type = "histogram",
 # filter post trim from post where from_id in from_id.trim
 # post.trim <- post[(post$from_id %in% from_id.trim), ]
 
-# Analysis # Like in first post effect on # post ----
+# Analysis # Like in first post (1st-post-#liked) effect on # post ----
 
 load(file = "FBPostEdit.RData")
 
@@ -196,40 +196,64 @@ load(file = "FBPostEdit.RData")
 post.list <- split(post.new[, c("from_id", "type", "likes_count",
                             "comments_count", "shares_count", 
                             "post.date.time")], post.new$from_id)
+
 # sort data.frame in list by post.date.time
 post.list <- lapply(post.list, 
                     FUN = function(df) {
                       df[order(df$post.date.time), ]
                       })
 
-# No. of liked in first post
+# No. 1st-post-#liked (row 1 of sorted data)
 firstPost.liked <- lapply(post.list,
                           FUN = function(df) {
                             df[1,"likes_count"]
                             })
 
+# No. of comment in first post (row 1 of sorted data)
 firstPost.comment <- lapply(post.list,
                           FUN = function(df) {
                             df[1,"comments_count"]
                           })
 
-# No. of post after first post
+# No. of post after first post (number of row except the first row)
 noPost.afterFirst <- lapply(post.list, 
-                            FUN = function(df) {nrow(df[-1, ])
+                            FUN = function(df) {
+                              nrow(df[-1, ])
                             })
+
+# Combine all list to dataframe & named
 df <- cbind(as.data.frame(unlist(firstPost.liked)),
             as.data.frame(unlist(firstPost.comment)),
             as.data.frame(unlist(noPost.afterFirst)))
 colnames(df) <- c("firstPostLiked", "firstPostCommnet", "noPostAfterfirst")
 
+# Cut data by 1st-post-#liked
+df$like.range <- cut(df$firstPostLiked, 
+                  c(0, 1, 10, 20, 30, 150), right = FALSE) # not include right-side range
 summary(df)
-plot(x = df$firstPostLiked, y = df$noPostAfterfirst
-     , ylim = c(0, 1000), xlim = c(0, 80))
-# from EDA show no relation between no.first post liked <-> no post after first
 
-plot(x = df$firstPostComment, y = df$noPostAfterfirst, 
-     ylim = c(0,1000), xlim = c(0,10))
-# from basic EDA shwo no relation comment <-> no post after first post
+# Boxplot by range of 1st-post-#liked
+
+library(ggplot2)
+ggplot(data = df, aes(x = like.range, y = noPostAfterfirst)) + 
+  geom_boxplot(aes(color = like.range)) +
+  coord_cartesian(y = c(0, 250))
+
+# from EDA show some relation between 1st-post-#liked <-> # of post after first
+
+# t.test group [0,1) vs. [1,10) ; set var.equal = FALSE for expected diff varience of each group
+t.test(subset(df, like.range == "[0,1)", select = noPostAfterfirst), 
+       subset(df, like.range == "[1,10)", select = noPostAfterfirst),
+       paired = FALSE, var.equal = FALSE)  # var.equal = FALSE
+# Can not reject mean 1st-post-#liked of [0,1) = of [1,10)
+
+# t.test group [0,1) vs. [10,20) ; set var.equal = FALSE for expected diff varience of each group
+t.test(subset(df, like.range == "[0,1)", select = noPostAfterfirst), 
+       subset(df, like.range == "[10,20)", select = noPostAfterfirst),
+       paired = FALSE, var.equal = FALSE)  # var.equal = FALSE
+
+# Can reject mean 1st-post-#liked of [0,1) = of [10,20)
+# Confident interval in -49 .. -4 = mean of [0,1) smaller than of [10,20)
 
 # Try clustering data ----
 clust <- post.new[, c("from_id", "likes_count", "comments_count", "post.date.time")]
@@ -351,12 +375,12 @@ plot(x = df.pca$x[ ,1], y = df.pca$x[, 2])
 
 # PAM (Patition Around Medoids) clustering ----
 # find optimum k of cluster find maximum width in silluate data
-sil <- 0
-for(i in 2:15) sil[i] <- pam(scale(df[, -1]), i)$silinfo$avg.width
+sil.width <- 0
+for(i in 2:15) sil.width[i] <- pam(scale(df[, -1]), i)$silinfo$avg.width
 
-k <- which.max(sil)  # Find cluster that maximized avg width between cluster
+k <- which.max(sil.width)  # Find cluster no. that maximized avg width between cluster
 
-df.pam <- pam(scale(df[, -1]), 4)
+df.pam <- pam(scale(df[, -1]), k)
 
 df.pam$medoids  # Show point selected as medoids
 df.pam$clustering  # Cluster assigned
@@ -365,17 +389,45 @@ table(df.pam$clustering)  # No. of obs in each cluster
 library(cluster)
 clusplot(df.pam)
 # silhouette plot show obs. in each cluster & avg Sihouette witdh
-# - silhouette width = miss cluster
+# minus silhouette width = missed cluster
 # use parameter border = NA to solve color not show
-
-plot(silhouette(df.pam), col = 2:5, border = NA)
+sil <- silhouette(df.pam)
+plot(sil, col = 2:3, border = NA)
 # From plot result the clustering not so clear
 # The silhouette width of each cluster have minus value (close to adjacent cluster)
 
-# Hierchical clustering ----
+# Identify the minus silhouette width
+minus.sil.idx <- which(sil[,'sil_width'] < 0)
+sil[minus.sil.idx, ]
 
-dist <- dist(df.scale, method = "euclidean")
-clust <- hclust(dist, method = "ward.D")
+# Trace back form minus silhouette to data points
+View(df[as.integer(row.names(sil[minus.sil.idx, ])), ])
+
+# CLARA ----
+# Sample data, use PAM algorithm to assigned medoids 
+# Use the best (least dissimilarity) cluster result
+df.clara <- clara(df.scale, k = 2, samples = 100)
+plot(df.clara) # plot both clusplot & silhouette
+
+# Hierarchical clustering ----
+load(file = "FBCluster.RData")
+
+# Basic Hierarchical hclust (agglomerative)
+dist <- dist(scale(df[, -1]), method = "euclidean")
+clust <- hclust(dist, method = "ward.D2")
+plot(clust)
+
+# Agnes (agglomerative)
+clust.agnes <- agnes(df[, -1], metric = "euclidean", stand = TRUE, method = "ward")
+plot(clust.agnes)
+
+# Diana (divisive)
+clust.diana <- diana(df[, -1], metric = 'euclidean', stand = TRUE)
+plot(clust.diana)
+
+# Use correlation based distance measure
+dist <- cor(t(df[, -1]), method = "pearson")  # Transpose to compute Corr by pairwised obs
+clust <- hclust(as.dist(1 - dist), method = "ward.D2")
 plot(clust)
 
 # Use cluster = 3 group
@@ -385,9 +437,10 @@ group <- cutree(clust, k = 3)
 rect.hclust(clust, k = 3 , border = 'red')
 
 # Map back group to data
-df.hclust <- df[c(-1875, -772),]
+df.hclust <- df
 df.hclust$clust <- group
 
+# Exploratory each cluster key parameter
 library(ggplot2)
 
 ggplot(df.hclust, aes(n, fill = factor(clust), color = factor(clust))) +
