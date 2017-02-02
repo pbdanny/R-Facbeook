@@ -461,6 +461,15 @@ ggplot(df.hclust, aes(x = n, y = mean.like.count, fill = factor(clust), color = 
   geom_smooth(stat = "smooth") +
   coord_cartesian(xlim = c(0, 500))
   
+# Test cluterability Hopkin stat.
+
+library(clustertend)
+
+hopkins(df[, -1], n = 2000)
+
+# Hopkins stat = 0.0083 (clusterable), means that compare with random distributed data with same
+# number of data points if distance of this data are more closed to each others(clusterable)
+# then Hopkons -> 0
 
 # group 1 : "Effective poster" moderate poster, tailer content to gain likes
 # group 2 : "Just poster" Rarely post, don't care like received
